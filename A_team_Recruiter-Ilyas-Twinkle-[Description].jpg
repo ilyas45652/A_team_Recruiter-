@@ -1,0 +1,160 @@
+// Frontend: Next.js (pages/index.js)
+import { useState, useEffect } from 'react';
+import Header from '../components/Header';
+import CandidateSearch from '../components/CandidateSearch';
+import Testimonials from '../components/Testimonials';
+
+export default function Home({ candidates }) {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      
+      <main className="container mx-auto px-4 py-8">
+        <CandidateSearch initialCandidates={candidates} />
+        <Testimonials />
+      </main>
+    </div>
+  );
+}
+
+export async function getServerSideProps() {
+  const res = await fetch(`${process.env.API_URL}/candidates`);
+  const candidates = await res.json();
+  return { props: { candidates } };
+}
+
+// components/CandidateSearch.js
+import { useState } from 'react';
+
+export default function CandidateSearch({ initialCandidates }) {
+  const [filters, setFilters] = useState({
+    skills: [],
+    experience: '',
+    location: ''
+  });
+
+  const filteredCandidates = applyFilters(initialCandidates, filters);
+
+  return (
+    <div className="bg-white p-6 rounded-lg shadow-md">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <input 
+          type="text" 
+          placeholder="Skills (comma separated)"
+          className="p-2 border rounded"
+          onChange={(e) => setFilters({...filters, skills: e.target.value.split(',')})}
+        />
+        {/* Other filter inputs */}
+      </div>
+
+      <div className="space-y-4">
+        {filteredCandidates.map(candidate => (
+          <div key={candidate._id} className="p-4 border rounded-lg">
+            <h3 className="text-xl font-semibold">{candidate.name}</h3>
+            <p className="text-gray-600">{candidate.skills.join(', ')}</p>
+            <p>Experience: {candidate.experience} years</p>
+            <a 
+              href={`mailto:a.recruiter.team@gmail.com?subject=Inquiry about ${candidate.name}`}
+              className="mt-2 inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Contact Recruiter
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+// Backend: Node.js/Express (server.js)
+const express = require('express');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const userRoutes = require('./routes/users');
+const candidateRoutes = require('./routes/candidates');
+
+const app = express();
+app.use(express.json());
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+// Authentication Middleware
+const authenticate = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) return res.status(401).send('Access denied');
+  
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch (err) {
+    res.status(400).send('Invalid token');
+  }
+};
+
+// Routes
+app.use('/api/users', userRoutes);
+app.use('/api/candidates', authenticate, candidateRoutes);
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// routes/candidates.js
+const express = require('express');
+const router = express.Router();
+const Candidate = require('../models/Candidate');
+
+// Get filtered candidates
+router.get('/', async (req, res) => {
+  try {
+    const filters = {};
+    if (req.query.skills) {
+      filters.skills = { $in: req.query.skills.split(',') };
+    }
+    // Add other filters
+    
+    const candidates = await Candidate.find(filters);
+    res.json(candidates);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+module.exports = router;
+
+// models/Candidate.js
+const mongoose = require('mongoose');
+
+const candidateSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  skills: [{ type: String }],
+  experience: { type: Number, required: true },
+  location: String,
+  resumeUrl: String,
+  applications: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Job' }]
+});
+
+module.exports = mongoose.model('Candidate', candidateSchema);
+
+npm install
+vercel env add
+vercel deploy
+
+heroku create
+heroku addons:create mongolab
+git push heroku main
+
+## Candidate API Endpoints
+
+### GET /api/candidates
+- Query Params:
+  - skills: comma-separated list
+  - experience: minimum years
+  - location: string
+
+### POST /api/candidates
+- Body: { name, email, skills, experience, location }
+- Headers: Authorization Bearer <JWT>
